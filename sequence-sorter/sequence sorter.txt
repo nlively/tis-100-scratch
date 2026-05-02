@@ -1,0 +1,171 @@
+@0  # Stack 1 Feeder (2,1)
+
+TOP: MOV -1 RIGHT     # first load into the stack is always -1, the stack-level sequence terminator
+
+# input collection loop
+IN: 
+  MOV UP ACC          # grab value from input stream
+  JEZ SEQ             # if value is 0, it's a sequence terminator
+  MOV ACC RIGHT       # else, move input value onto the stack
+  JMP IN              # continue loop
+
+# sequence termination routine
+SEQ: 
+  MOV -1 DOWN         # -1 is the control signal telling the node below that it's time to
+                      # start draining the stack and finding the lowest value
+  MOV DOWN ACC        # block until the node below signals that it's done
+  
+  JLZ TOP             # -1 from below is the control signal that we have finished processing
+                      # and sorting the entire input sequence (outer loop done)
+  
+  MOV -1 RIGHT        # != -1 from below means that we need to iterate into the next inner loop,
+                      # which will re-sort remaining unsorted values one loop after another until
+                      # there are no more unsorted values.  for each one of these loops we init
+                      # the stack to the right with -1
+  
+                      # implicitly enter inner loop......
+
+# stack recycle loop (inner loop)
+LP: 
+  MOV DOWN ACC        # grab recycled value from stack 2, via node below
+  JEZ SEQ             # 0 is a control signal... a stack sequence (inner loop iteration) has been processed
+  JLZ IN              # -1 is a control signal that we're done with inner loops. again, do we really need?
+  MOV ACC RIGHT       # move recycled value back onto stack 1
+  JMP LP              # continue inner loop
+
+
+@1 # Unused
+
+
+@2 # Unused
+
+
+@3 # Control Flow
+
+TOP:
+  MOV UP RIGHT        # block until Stack 1 Feeder signals that it has loaded a complete sequence, 
+                      # then pass the control signal to the Stack 1 Drainer
+  MOV RIGHT 0         # block until Stack 1 Drainer is done
+  MOV 0 UP            # tell Stack 1 Feeder that we're done processing an inner loop
+
+LP: 
+  MOV DOWN ACC        # pop a value off of Stack 2
+  JEZ LPSDN           # 0 on Stack 2 means we're all done with inner loops. jump to "loops done"
+SEND: MOV DOWN UP
+  SUB 1
+  JEZ MRLPS
+  JMP SEND
+
+# "loops done" handler
+LPSDN:
+  MOV 0 RIGHT         # signal Stack 1 Drainer to send 0 to output
+  MOV -1 UP           # signal Stack 1 Feeder that we're done with inner loops
+  JMP TOP             # restart at the top
+
+MRLPS: 
+  MOV 0 UP            # send 0 control signal to Stack 1 Feeder
+
+
+@4 # Stack 1 Drainer
+
+TOP: 
+  MOV LEFT ACC        # grab control signal from Control Flow
+  JEZ W0              # if control signal is 0, write 0 to output
+  MOV UP RIGHT        # else, pop a value off the stack and send it to
+                      # lowest value state machine
+
+                      # implicitly enter loop...
+
+# stack drain loop (repeats until Stack 1 is empty)
+LP:
+  MOV UP ACC          # pop next value from stack
+  MOV ACC RIGHT       # send it to Lowest Value State Machine
+  JLZ RESET           # if value is -1, stack is drained. reset
+  MOV RIGHT DOWN      # receive discard from Lowest value State Machine
+                      # and pass it down to be recycled
+  JMP LP              # continue loop
+
+RESET: 
+  MOV -1 DOWN         # send a control signal downward. "we're done with an inner loop"
+  MOV RIGHT DOWN      # send lowest value downward
+  MOV 0 RIGHT         # blocking / sync
+  MOV 0 LEFT          # unblock left
+  JMP TOP
+
+W0: 
+  MOV 0 DOWN
+
+@5 # Lowest Value State Machine
+TOP: 
+  JEZ TAKE            # if we're just starting (acc==0), automatically
+                      # take the first input as lowest
+
+  MOV LEFT ACC        # else, grab next value from stack drainer
+  JLZ RESET           # if value == -1, it's a control signal to 
+                      # clear memory and wait for a new sequence
+
+                      # else, compare input with current lowest
+CMP: 
+  MOV ACC DOWN        # send input to the comparer 
+  SWP                 # load current lowest into acc
+  MOV ACC DOWN        # send the other value to the comparer 
+  MOV ACC DOWN        # send it again
+  MOV DOWN ACC        # receive the lowest value
+  SAV                 # save lowest value in both registers
+  MOV DOWN LEFT       # past higher value back to Stack 1 Drainer
+  JMP TOP             # loop back to top
+
+RESET: 
+  SWP                 # load the lowest value into acc
+  MOV ACC LEFT        # send it to Stack 1 Drainer
+
+TAKE: 
+  MOV LEFT ACC        # grab the input into acc
+  SAV                 # save it to both registers
+
+
+@6 # Unused
+# DONE 4/12/26:
+# STATE MCHN (4,2)
+# COMPARER (4,3)
+# COUNTER (1,2)
+# CTL FLOW (2,2)
+
+@7 # Stack Recycle / Output
+LP: 
+  MOV UP ACC
+  JLZ IBRK
+  JEZ OBRK
+  SWP
+  ADD 1
+  SWP
+  MOV ACC LEFT
+  JMP LP
+IBRK:
+  MOV UP DOWN
+  SWP
+  MOV ACC LEFT
+  JMP RST
+OBRK: 
+  MOV 0 DOWN
+RST: 
+  MOV 0 ACC
+  SAV
+
+@8 # Comparer
+TOP: 
+  MOV UP ACC
+  SAV
+  SUB UP
+  JLZ TAKE1
+TAKE2: 
+  MOV UP UP
+  SWP
+  MOV ACC UP
+  JMP TOP
+TAKE1:
+  MOV UP ACC
+  SWP
+  MOV ACC UP
+  SWP
+  MOV ACC UP
