@@ -112,7 +112,7 @@ CMP:
   MOV ACC DOWN        # send it again
   MOV DOWN ACC        # receive the lowest value
   SAV                 # save lowest value in both registers
-  MOV DOWN LEFT       # past higher value back to Stack 1 Drainer
+  MOV DOWN LEFT       # pass higher value back to Stack 1 Drainer
   JMP TOP             # loop back to top
 
 RESET: 
